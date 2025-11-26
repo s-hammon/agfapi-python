@@ -1,0 +1,53 @@
+name: PyPI release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "version override"
+        required: false
+
+env:
+  TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+  TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+  VERSION_OVERRIDE: ${{ github.event.inputs.version }}
+
+jobs:
+  pypi-publish:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/agfapi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install setuptools wheel pytest twine
+      - name: Set version
+        run: |
+          if [[ $VERSION_OVERRIDE ]]; then
+            echo $VERSION_OVERRIDE > agfapi/VERSION
+          else
+            LATEST_VERSION=$(curl -s https://api.github.com/repos/s-hammon/agfapi/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//')
+            echo $LATEST_VERSION > agfapi/VERSION
+          fi
+          echo "Version set: $(cat agfapi/VERSION)"
+      - name: Run tests
+        run: |
+          cd agfapi
+          pip install -e .
+          python -m pytest tests/* -v
+      - name: Build and Release
+        run: |
+          cp README.md agfapi/
+
+          cd agfapi
+          python -m build && twine upload --verbose --skip-existing dist/*
