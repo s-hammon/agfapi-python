@@ -41,12 +41,12 @@ def download_agfapi_binary():
 
 class PostInstallCommand(install):
     def run(self):
-        install.run(self)
+        super().run()
         self.execute(download_agfapi_binary, [], msg="Downloading agfapi binary...")
 
 class PostDevelopCommand(develop):
     def run(self):
-        install.run(self)
+        super().run()
         self.execute(download_agfapi_binary, [], msg="Downloading agfapi binary...")
 
 

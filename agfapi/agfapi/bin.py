@@ -2,113 +2,90 @@ import os
 from pathlib import Path
 import platform
 import stat
-import tarfile
-import tempfile
 from typing import Tuple
-import urllib
+import urllib.request
 import warnings
-import zipfile
 
 
-def get_platform_info() -> Tuple[str, str, str, str]:
+def get_platform_info() -> Tuple[str, str, str]:
     system = platform.system()
-    machine = platform.machine()
+    machine = platform.machine().lower()
 
     match system:
         case "Linux":
-            if machine == "aarch64":
-                return "linux", "arm64", "sling_linux_arm64.tar.gz", "agfapi"
+            if "aarch64" in machine or "arm64" in machine:
+                return "linux", "arm64", "agfapi_linux_arm64"
             else:
-                return "linux", "amd64", "sling_linux_amd64.tar.gz", "agfapi"
+                return "linux", "x86_64", "agfapi_linux_x86_64"
         case "Windows":
-            if machine == "ARM64":
-                return "windows", "arm64", "sling_windows_arm64.tar.gz", "agfapi.exe"
+            if "arm64" in machine:
+                return "windows", "arm64", "agfapi_windows_arm64.exe"
             else:
-                return "windows", "amd64", "sling_windows_amd64.tar.gz", "agfapi.exe"
+                return "windows", "x86_64", "agfapi_windows_x86_64.exe"
         case _:
             raise RuntimeError(f"Unsupported platform: {system} {machine}")
 
 def get_binary_cache_dir(version: str) -> Path:
-    agfapi_home = os.getenv("AGFAPI_HOME_DIR")
-    if agfapi_home:
-        home_dir = Path(agfapi_home)
-    else:
-        home_dir = Path.home() / ".agfapi"
-
-    cache_dir = home_dir / "bin" / "agfapi" / version
+    home = os.getenv("AGFAPI_HOME_DIR", Path.home() / ".agfapi")
+    cache_dir = Path(home) / "bin" / "agfapi" / version
     cache_dir.mkdir(parents=True, exist_ok=True)
+
     return cache_dir
 
 def download_binary(version: str) -> str:
-    system, arch, archive_name, binary_name = get_platform_info()
+    system, arch, binary_name = get_platform_info()
     if version != "latest" and not version.startswith("v"):
         version = "v" + version
 
     cache_dir = get_binary_cache_dir(version)
     binary_path = cache_dir / binary_name
+
     if binary_path.exists():
         return str(binary_path)
 
     if version == "latest":
-        gh_url = f"https://github.com/s-hammon/agfapi/releases/latest/download/{archive_name}"
+        url = f"https://github.com/s-hammon/agfapi/releases/latest/download/{binary_name}"
     else:
-        gh_url = f"https://github.com/s-hammon/agfapi/releases/download/{version}/{archive_name}"
+        url = f"https://github.com/s-hammon/agfapi/releases/download/{version}/{binary_name}"
+
+    print(f"Downloading agfapi binary ({version}) for {system}/{arch}...")
 
     try:
-        print(f"Downloading agfapi binary ({version}) for {system}/{arch}...")
+        with urllib.request.urlopen(url) as response:
+            data = response.read()
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp_file:
-            import ssl
-            context = ssl.create_default_context()
+        with open(binary_path, "wb") as f:
+            f.write(data)
 
-            try:
-                with urllib.request.urlopen(gh_url, context=context) as response:
-                    tmp_file.write(response.read())
-            except (ssl.SSLError, urllib.error.URLError) as e:
-                if isinstance(e, urllib.error.URLError) and "SSL" not in str(e):
-                    raise
-                print("SSL certificate verification failed, trying without verification...")
-                context = ssl.create_default_context()
-                context.check_hostname = False
-                context.verify_mode = ssl.CERT_NONE
-                with urllib.request.urlopen(gh_url, context=context) as response:
-                    tmp_file.write(response.read())
-
-            tmp_file_path = tmp_file.name
-
-        try:
-            if archive_name.endswith(".tar.gz"):
-                with tarfile.open(tmp_file_path, "r:gz") as tar:
-                    for member in tar.getmembers():
-                        if member.name == binary_name or member.name.endswith(f"/{binary_name}"):
-                            member.name = binary_name
-                            tar.extract(member, cache_dir)
-                            break
-                    else:
-                        raise RuntimeError(f"Binary {binary_name} not found in archive.")
-
-            elif archive_name.endswith(".zip"):
-                with zipfile.ZipFile(tmp_file_path, "r") as zip_file:
-                    for name in zip_file.namelist():
-                        if name == binary_name or name.endswith(f"/{binary_name}"):
-                            with zip_file.open(name) as source:
-                                with open(binary_path, "wb") as tgt:
-                                    tgt.write(source.read())
-                            break
-                    else:
-                        raise RuntimeError(f"Binary {binary_name} not found in archive")
-
-        finally:
-            os.unlink(tmp_file_path)
-
-        if binary_path.exists():
-            binary_path.chmod(binary_path.stat().st_mode | stat.S_IEXEC)
-            return str(binary_path)
-        else:
-            raise RuntimeError("Failed to extract binary from archive")
-
+        st = binary_path.stat()
+        binary_path.chmod(st.st_mode | stat.S_IEXEC)
+        return str(binary_path)
 
     except Exception as e:
-        warnings.Warn(f"Failed to download agfapi binary: {e}")
-        raise RuntimeError(f"Could not download agfapi binary for {system}/{arch}: {e}")
+        warnings.warn(f"Failed to download agfapi binary: {e}")
+        raise RuntimeError(f"Could not download agfapi binary: {e}")
 
+def get_agfapi_version():
+    version = os.getenv("AGFAPI_VERSION")
+    if version:
+        return version
+
+    try:
+        from importlib.metadata import version as pkg_version
+        version = pkg_version("agfapi")
+
+        if "dev" in version or version == "0.0.0":
+            return "latest"
+        if ".post" in version:
+            version = version.split(".post")[0]
+
+        return version
+
+    except Exception:
+        return "latest"
+
+try:
+    VERSION = get_agfapi_version()
+    AGFAPI_BIN = download_binary(VERSION)
+except Exception as e:
+    raise RuntimeError(f"agfapi: cannot initialize binary: {e}")
