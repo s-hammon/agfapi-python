@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install setuptools wheel pytest twine
+          pip install build setuptools wheel pytest twine
       - name: Set version
         run: |
           if [[ $VERSION_OVERRIDE ]]; then
