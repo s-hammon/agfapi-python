@@ -72,5 +72,5 @@ setup(
             "install": PostInstallCommand,
             "develop": PostDevelopCommand,
         },
-        classifiers=["Programming Language :: Python :: 3", "Intended Audience :: Developers", "Operation System :: Unix"],
+        classifiers=["Programming Language :: Python :: 3", "Intended Audience :: Developers", "Operating System :: Unix"],
 )
