@@ -16,7 +16,7 @@ README = "dev"
 readme_path = pathlib.Path(os.path.join(os.path.dirname(__file__), "README.md"))
 if readme_path.exists():
     with readme_path.open() as file:
-        AGFAPI_VERSION = file.read()
+        README = file.read()
 
 install_requires = []
 
