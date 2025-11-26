@@ -45,9 +45,10 @@ jobs:
           cd agfapi
           pip install -e .
           python -m pytest tests/* -v
-      - name: Build and Release
+      - name: Build
         run: |
           cp README.md agfapi/
-
           cd agfapi
-          python -m build && twine upload --verbose --skip-existing dist/*
+          python -m build
+      - name: Release to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
